@@ -1,6 +1,6 @@
 # SealPod Container Attestation Analyzer
 
-This repository contains a Terminus-Bench 2.0 task designed for the Snorkel AI platform. The task challenges AI coding agents to reverse-engineer a custom, undocumented cryptographic container image attestation block (`SealPod`) embedded in an OCI spec, and repair a Flask analysis service and a vulnerability visualization script.
+This repository contains a Terminus-Bench 2.0 task designed for the Snorkel AI platform. The task challenges AI coding agents to reverse-engineer a custom, undocumented cryptographic container image attestation block (`SealPod`) embedded in a container config, and repair a Flask analysis service and a vulnerability visualization script.
 
 ## Task Structure
 ```
@@ -9,6 +9,7 @@ S1/
 ├── task.toml              # Metadata and run limits
 ├── environment/
 │   ├── Dockerfile         # Digest-pinned base image + dependencies (tmux, asciinema, graphviz)
+│   ├── requirements.lock  # Pinned dependencies lockfile
 │   └── app/               # Challenge workspace files (Flask API, mock OSV, keys, spec)
 ├── solution/
 │   ├── solve.sh           # Oracle entrypoint script
@@ -59,10 +60,10 @@ These are the exact text answers to fill in the submission form on the Snorkel E
 > **Answer:**
 > This is a non-milestone security/cryptography task category submission. It uses an approved canonical base image (`python:3.13-slim-bookworm`). The task includes a mock OSV.dev server running inside the container to avoid external API dependency failures and ensure that all agent tests are fully deterministic and fast. Tmux and asciinema are installed in the Dockerfile as required by the runtime guidelines.
 
-### 5. Rubric Checkbox & Metadata
+### 5. Checkboxes and Numbers
 * **Does this task use an approved canonical base image?:** `Yes` (uses `python:3.13-slim-bookworm`)
 * **Did you use a Task Inspiration from the Task Gallery for this submission?:** `No`
-* **How long did it take you to complete this submission?:** `180` (minutes)
+* **How long did it take you to complete this submission? (in minutes):** `180`
 * **Prompt Check (I reviewed my prompt and):**
   * Ensured it does not list an excessive number of requirements (20+) -> `Checked`
   * Made it sound natural and human -> `Checked`
