@@ -1,0 +1,14 @@
+digraph G {
+    node [shape=box, style=filled, fillcolor=lightblue];
+    "Signer: release-signer@sealpod.io" -> "Layer: sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef";
+    "Layer: sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef" -> "Package: numpy (1.26.4)";
+    "Layer: sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef" -> "Package: lodash (4.17.20)";
+    "Layer: sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef" -> "Package: openssl (3.0.2-0ubuntu1)";
+    "Signer: release-signer@sealpod.io" -> "Layer: sha256:d8c2bef31f4e14f286937ce665e8a1d3669bf06c5905b01387fb64db8c2d8296";
+    "Layer: sha256:d8c2bef31f4e14f286937ce665e8a1d3669bf06c5905b01387fb64db8c2d8296" -> "Package: numpy (1.26.4)";
+    "Layer: sha256:d8c2bef31f4e14f286937ce665e8a1d3669bf06c5905b01387fb64db8c2d8296" -> "Package: lodash (4.17.20)";
+    "Layer: sha256:d8c2bef31f4e14f286937ce665e8a1d3669bf06c5905b01387fb64db8c2d8296" -> "Package: openssl (3.0.2-0ubuntu1)";
+    "Package: numpy (1.26.4)" -> "CVE-2024-37891";
+    "Package: lodash (4.17.20)" -> "CVE-2020-8203";
+    "Package: openssl (3.0.2-0ubuntu1)" -> "CVE-2022-0778";
+}
