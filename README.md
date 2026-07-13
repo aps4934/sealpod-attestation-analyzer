@@ -6,7 +6,7 @@ This repository contains a Terminus-Bench 2.0 task designed for the Snorkel AI p
 ```
 S1/
 ├── instruction.md         # Task prompt for the agent
-├── task.toml              # Metadata and run limits
+├── task.toml              # Metadata and run limits (Edition 2.0 format)
 ├── environment/
 │   ├── Dockerfile         # Digest-pinned base image + dependencies (tmux, asciinema, graphviz)
 │   ├── requirements.lock  # Pinned dependencies lockfile
@@ -16,8 +16,9 @@ S1/
 │   ├── app.py             # Solved Flask verification service reference
 │   └── client.py          # Solved vulnerability visualization reference
 └── tests/
+    ├── leaf.key           # Testing private key used for test payload signing
     ├── test.sh            # Main test runner (starts servers, runs pytest, writes reward.txt)
-    └── test_outputs.py    # Pytest integration tests
+    └── test_outputs.py    # Pytest integration tests (fully document-stringed & assert-strengthened)
 ```
 
 ---
@@ -53,12 +54,12 @@ These are the exact text answers to fill in the submission form on the Snorkel E
 > 1. **`test_endpoint_contract`**: Validates that a correct configuration payload returns HTTP 200, successfully normalizes the ecosystems to PyPI/npm/Debian, and correctly outputs signature data.
 > 2. **`test_invalid_signature`**: Checks that a tampered signature returns HTTP 400 and reports verification failure.
 > 3. **`test_untrusted_ca_chain`**: Asserts that a self-signed leaf certificate not belonging to the trusted Intermediate/Root CA is rejected.
-> 4. **`test_mismatched_signer`**: Asserts that if a payload claims a signer email different from the certificate's SAN email, verification is rejected.
-> 5. **`test_client_run_and_dot_graph`**: Executes the client script, verifies it exits with 0, and parses the output `graph.dot` to verify that all nodes and edges (Signer, Layers, Packages, and CVEs) are present and properly connected.
+> 4. **`test_mismatched_signer`**: Asserts that if a payload claims a signer email different from the certificate's SAN email, verification is rejected. (This is verified independently by re-signing the tampered payload with the leaf private key to isolate the check from signature failure).
+> 5. **`test_client_run_and_dot_graph`**: Executes the client script, verifies it exits with 0, and parses the output `graph.dot` to verify that all nodes and edges (Signer, Layers, Packages, and CVEs) are present and properly connected across all layers.
 
 ### 4. Comments for Reviewer (optional)
 > **Answer:**
-> This is a non-milestone security/cryptography task category submission. It uses an approved canonical base image (`python:3.13-slim-bookworm`). The task includes a mock OSV.dev server running inside the container to avoid external API dependency failures and ensure that all agent tests are fully deterministic and fast. Tmux and asciinema are installed in the Dockerfile as required by the runtime guidelines.
+> This is a non-milestone security/cryptography task category submission. It uses an approved canonical base image (`python:3.13-slim-bookworm`). The task includes a mock OSV.dev server running inside the container to avoid external API dependency failures and ensure that all agent tests are fully deterministic and fast. Tmux and asciinema are installed in the Dockerfile as required by the guidelines.
 
 ### 5. Checkboxes and Numbers
 * **Does this task use an approved canonical base image?:** `Yes` (uses `python:3.13-slim-bookworm`)
