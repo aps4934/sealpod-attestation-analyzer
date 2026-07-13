@@ -3,7 +3,6 @@ import json
 import subprocess
 import requests
 import pytest
-from cryptography import x509
 
 API_URL = "http://localhost:8080/verify"
 
@@ -22,12 +21,12 @@ def wait_for_services():
         pytest.fail("Verification service did not start in time.")
 
 def get_base_config():
-    """Load the default container configuration spec."""
+    """Load the default valid container configuration spec."""
     with open("/app/container_config.json", "r", encoding="utf-8") as f:
         return json.load(f)
 
 def test_endpoint_contract():
-    """Verify that a valid attestation block returns HTTP 200 with the correct contract layout and normalized package ecosystems."""
+    """Verify that a valid attestation block returns HTTP 200 with the correct contract layout, including the layers list and normalized package ecosystems."""
     container_config = get_base_config()
     resp = requests.post(API_URL, json={"container_config": container_config})
     assert resp.status_code == 200
@@ -35,6 +34,12 @@ def test_endpoint_contract():
     
     assert res_data["verified"] is True
     assert res_data["signer"] == "release-signer@sealpod.io"
+    
+    # Assert layers are returned correctly
+    layers = res_data["layers"]
+    assert len(layers) == 2
+    assert "sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef" in layers
+    assert "sha256:d8c2bef31f4e14f286937ce665e8a1d3669bf06c5905b01387fb64db8c2d8296" in layers
     
     # Assert ecosystem normalization
     packages = res_data["packages"]
@@ -61,6 +66,7 @@ def test_untrusted_ca_chain():
     """Verify that an attestation signed by a certificate outside the trusted root/intermediate CA chain is rejected with HTTP 400."""
     container_config = get_base_config()
     # Replace the certificate with a self-signed one (not signed by the intermediate CA)
+    from cryptography import x509
     from cryptography.x509.oid import NameOID
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
@@ -87,41 +93,15 @@ def test_untrusted_ca_chain():
     assert "chain" in resp.json().get("error", "").lower() or "untrusted" in resp.json().get("error", "").lower() or "certificate" in resp.json().get("error", "").lower()
 
 def test_mismatched_signer():
-    """Verify that an attestation payload where the signer email does not match the certificate's Subject Alternative Name is rejected, even when the signature is cryptographically valid."""
-    container_config = get_base_config()
-    attestation = container_config["custom"]["sealpod"]["attestations"][0]
-    
-    # Payload claims signer is 'attacker@malicious.com'
-    # But certificate SAN matches 'release-signer@sealpod.io'
-    import base64
-    payload_bytes = base64.urlsafe_b64decode(attestation["payload"] + "===")
-    payload_data = json.loads(payload_bytes)
-    payload_data["signer"] = "attacker@malicious.com"
-    
-    # Load the actual leaf private key to sign the tampered payload
-    from cryptography.hazmat.primitives.serialization import load_pem_private_key
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.hazmat.primitives import hashes
-    
-    key_path = "D:/Snorkel/S1D:/Snorkel/S1/tests/leaf.key"
-    if not os.path.exists(key_path):
-        key_path = "D:/Snorkel/S1D:/Snorkel/S1D:/Snorkel/S1/tests/leaf.key"
+    """Verify that an attestation payload where the signer email does not match the certificate's Subject Alternative Name is rejected with HTTP 400."""
+    # Load pre-signed configuration with mismatched signer email
+    mismatched_path = "/tests/mismatched_signer_config.json"
+    if not os.path.exists(mismatched_path):
+        mismatched_path = os.path.join(os.path.dirname(__file__), "mismatched_signer_config.json")
         
-    with open(key_path, "rb") as f:
-        leaf_key = load_pem_private_key(f.read(), password=None)
-        
-    # Re-encode payload canonical JSON
-    canonical_payload = json.dumps(payload_data, sort_keys=True, separators=(',', ':')).encode('utf-8')
-    encoded_payload = base64.urlsafe_b64encode(canonical_payload).decode('utf-8').rstrip('=')
+    with open(mismatched_path, "r", encoding="utf-8") as f:
+        container_config = json.load(f)
     
-    # Create a valid signature over the new payload using the actual leaf private key
-    signature_bytes = leaf_key.sign(encoded_payload.encode('utf-8'), ec.ECDSA(hashes.SHA256()))
-    encoded_signature = base64.urlsafe_b64encode(signature_bytes).decode('utf-8').rstrip('=')
-    
-    attestation["payload"] = encoded_payload
-    attestation["signature"] = encoded_signature
-    
-    # Endpoint should reject because the signer email in the payload does not match the certificate SAN email
     resp = requests.post(API_URL, json={"container_config": container_config})
     assert resp.status_code == 400
     res_json = resp.json()
@@ -129,6 +109,24 @@ def test_mismatched_signer():
     
     err_msg = res_json.get("error", "").lower()
     assert "signer" in err_msg or "mismatch" in err_msg or "email" in err_msg
+
+def test_expired_certificate():
+    """Verify that an attestation signed by an expired leaf certificate is rejected with HTTP 400."""
+    # Load pre-signed configuration with expired leaf certificate
+    expired_path = "/tests/expired_cert_config.json"
+    if not os.path.exists(expired_path):
+        expired_path = os.path.join(os.path.dirname(__file__), "expired_cert_config.json")
+        
+    with open(expired_path, "r", encoding="utf-8") as f:
+        container_config = json.load(f)
+        
+    resp = requests.post(API_URL, json={"container_config": container_config})
+    assert resp.status_code == 400
+    res_json = resp.json()
+    assert res_json["verified"] is False
+    
+    err_msg = res_json.get("error", "").lower()
+    assert "expired" in err_msg or "time" in err_msg or "valid" in err_msg
 
 def test_client_run_and_dot_graph():
     """Verify that client.py executes successfully, queries the OSV service, and produces a complete Graphviz DOT graph containing all required nodes and layer/package/CVE mapping relationships."""

@@ -55,5 +55,11 @@ Your task is to repair the signature verification API at `/app/app.py` and compl
      * Signer certificate DN/email -> Layers
      * Layers -> Packages
      * Packages -> CVEs (if any)
+     * Node label formats must be exactly:
+       - Signer: `"Signer: <email>"` (e.g. `"Signer: release-signer@sealpod.io"`)
+       - Layer: `"Layer: <sha256_digest>"` (e.g. `"Layer: sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef"`)
+       - Package: `"Package: <name> (<version>)"` (e.g. `"Package: numpy (1.26.4)"`)
+       - CVE: `"<CVE-ID>"` (e.g. `"CVE-2024-37891"`)
+     * Every package resides on all layers defined in the same attestation block. Therefore, draw an edge from each layer in the attestation to every package in the attestation. Draw an edge from each package to all of its verified CVEs.
 
 All paths in your code must be absolute. The services will be run in the background during evaluation.
