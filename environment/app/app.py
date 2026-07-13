@@ -1,4 +1,3 @@
-import os
 import json
 import base64
 from flask import Flask, request, jsonify
@@ -64,9 +63,9 @@ def verify_sealpod_attestation(attestation):
 @app.route('/verify', methods=['POST'])
 def verify():
     data = request.get_json() or {}
-    oci_config = data.get("oci_config", {})
+    container_config = data.get("container_config", {})
     
-    attestations = oci_config.get("custom", {}).get("sealpod", {}).get("attestations", [])
+    attestations = container_config.get("custom", {}).get("sealpod", {}).get("attestations", [])
     if not attestations:
         return jsonify({"verified": False, "error": "No attestations found"}), 400
         
@@ -75,7 +74,7 @@ def verify():
         return jsonify(result), 400
         
     # Append the config layers to the response
-    result["layers"] = oci_config.get("rootfs", {}).get("diff_ids", [])
+    result["layers"] = container_config.get("rootfs", {}).get("diff_ids", [])
     return jsonify(result), 200
 
 if __name__ == '__main__':

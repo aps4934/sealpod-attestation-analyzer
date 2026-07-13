@@ -1,10 +1,9 @@
-import os
 import json
 import base64
 import datetime
 from flask import Flask, request, jsonify
 from cryptography import x509
-from cryptography.x509.oid import ExtensionOID, NameOID
+from cryptography.x509.oid import ExtensionOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.exceptions import InvalidSignature
@@ -123,9 +122,9 @@ def verify_sealpod_attestation(attestation):
 @app.route('/verify', methods=['POST'])
 def verify():
     data = request.get_json() or {}
-    oci_config = data.get("oci_config", {})
+    container_config = data.get("container_config", {})
     
-    attestations = oci_config.get("custom", {}).get("sealpod", {}).get("attestations", [])
+    attestations = container_config.get("custom", {}).get("sealpod", {}).get("attestations", [])
     if not attestations:
         return jsonify({"verified": False, "error": "No attestations found"}), 400
         
@@ -133,7 +132,7 @@ def verify():
     if not result.get("verified"):
         return jsonify(result), 400
         
-    result["layers"] = oci_config.get("rootfs", {}).get("diff_ids", [])
+    result["layers"] = container_config.get("rootfs", {}).get("diff_ids", [])
     return jsonify(result), 200
 
 if __name__ == '__main__':

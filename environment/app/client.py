@@ -17,12 +17,12 @@ def main():
         return
         
     with open(args.config, "r", encoding="utf-8") as f:
-        oci_config = json.load(f)
+        container_config = json.load(f)
         
     # 1. Call verification endpoint
     verify_url = "http://localhost:8080/verify"
     try:
-        response = requests.post(verify_url, json={"oci_config": oci_config})
+        response = requests.post(verify_url, json={"container_config": container_config})
         if response.status_code != 200:
             print(f"Error: Attestation verification failed: {response.text}")
             return
@@ -56,7 +56,7 @@ def main():
     for pkg in packages:
         name = pkg.get("name")
         version = pkg.get("version")
-        ecosystem = pkg.get("ecosystem")
+        # ecosystem = pkg.get("ecosystem")
         
         cves = []
         # --- TODO START ---

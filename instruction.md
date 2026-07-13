@@ -1,19 +1,56 @@
 We had a security incident where a rogue container image bypassed our admission controllers because of an issue in our SealPod attestation validation. 
 
-Your task is to repair our signature verification API at `/app/app.py` and complete the vulnerability analysis client at `/app/client.py`.
+Your task is to repair the signature verification API at `/app/app.py` and complete the vulnerability analysis client at `/app/client.py`.
 
-### Requirements:
-1. **Reverse-Engineer the SealPod Attestation Block:**
-   The image configuration spec at `/app/oci_config.json` contains a custom `custom.sealpod.attestations` block. The signature, canonicalization, hashing, and certificate validation rules for this block are undocumented, but details are scattered throughout the incident troubleshooting transcript at `/app/incident_transcript.txt`. Read the transcript to determine the exact verification protocol.
+### Requirements & Specification:
+
+1. **Verify the custom SealPod Attestation Block in the Container Configuration:**
+   The container image configuration spec is located at `/app/container_config.json`. It contains a custom `custom.sealpod.attestations` metadata block containing:
+   * `layers`: The list of layers (diff_ids) to verify.
+   * `payload`: Base64url-encoded JSON object containing signer identity, timestamp, and package list.
+   * `signature`: Base64url-encoded ECDSA signature over the payload.
+   * `certificate`: PEM-encoded leaf signing certificate.
    
-2. **Repair the Verification Endpoint:**
-   Fix the `/verify` POST endpoint in `/app/app.py`. It must ingest the OCI config payload, validate the certificate chain against the trusted root and intermediate certificates in `/app/keys/`, verify the signature over the canonicalized payload, and return a validated list of packages and layers. It must match the expected integration test contract.
+   The verification system must implement the following cryptographic specification:
+   * **JSON Canonicalization:** The parsed JSON payload must be canonicalized following **RFC 8785 (JCS)** (sorting keys, stripping whitespace).
+   * **Signature Verification:** The signature must be verified over the raw base64url payload string (not the decoded bytes). The signature uses ECDSA with SHA-256 (P-256 curve).
+   * **Certificate Chain Validation:** The leaf certificate must be validated against the trusted Intermediate and Root CA certificates located in `/app/keys/`.
+   * **Validity Check:** Ensure the leaf certificate is within its valid timeframe (not expired, not yet active).
+   * **Identity Verification:** The `signer` email in the payload must match the Subject Alternative Name (SAN) RFC822Name field in the leaf certificate.
+   
+   You can consult the historical incident transcript at `/app/incident_transcript.txt` for discussion context, failing drafts, and reference logic if needed.
+
+2. **Repair the Flask Verification Endpoint:**
+   Fix the `/verify` POST endpoint in `/app/app.py`. The endpoint must accept a JSON body containing `{"container_config": <dict>}` and return:
+   * **On Success (HTTP 200):**
+     ```json
+     {
+       "verified": true,
+       "signer": "<email>",
+       "layers": ["sha256:...", ...],
+       "packages": [
+         {
+           "name": "<package>",
+           "version": "<version>",
+           "ecosystem": "<normalized_ecosystem>"
+         }
+       ]
+     }
+     ```
+     Ecosystem names must be normalized: `pip` -> `PyPI`, `npm` -> `npm`, `deb` -> `Debian`.
+   * **On Failure (HTTP 400):**
+     ```json
+     {
+       "verified": false,
+       "error": "<reason>"
+     }
+     ```
 
 3. **Complete the Analysis & Visualization Script:**
    Complete `/app/client.py` so that it:
-   * Extracts the OCI config's attestation data.
-   * Submits it to `/verify` on the local Flask API.
-   * Queries the local mock OSV.dev endpoint (at `http://localhost:8082/v1/query`) to fetch vulnerability data for each package.
+   * Extracts the container config's attestation data.
+   * Submits the container configuration payload to the `/verify` endpoint of the local Flask API.
+   * Queries the local mock OSV.dev endpoint (at `http://localhost:8082/v1/query`) to fetch vulnerability data for each verified package.
    * Generates a Graphviz DOT file at `/app/graph.dot` mapping:
      * Signer certificate DN/email -> Layers
      * Layers -> Packages

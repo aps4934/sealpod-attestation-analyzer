@@ -12,7 +12,7 @@ def wait_for_services():
     # Wait for the verify API to be healthy
     for _ in range(30):
         try:
-            resp = requests.post(API_URL, json={}, timeout=1)
+            requests.post(API_URL, json={}, timeout=1)
             # Service is alive if it responds (even with 400 on empty JSON)
             break
         except requests.exceptions.ConnectionError:
@@ -22,13 +22,13 @@ def wait_for_services():
         pytest.fail("Verification service did not start in time.")
 
 def get_base_config():
-    with open("/app/oci_config.json", "r", encoding="utf-8") as f:
+    with open("/app/container_config.json", "r", encoding="utf-8") as f:
         return json.load(f)
 
 def test_endpoint_contract():
     # Verify valid OCI config verification returns expected contract
-    oci_config = get_base_config()
-    resp = requests.post(API_URL, json={"oci_config": oci_config})
+    container_config = get_base_config()
+    resp = requests.post(API_URL, json={"container_config": container_config})
     assert resp.status_code == 200
     res_data = resp.json()
     
@@ -45,20 +45,19 @@ def test_endpoint_contract():
     assert pkg_map["openssl"]["ecosystem"] == "Debian"
 
 def test_invalid_signature():
-    oci_config = get_base_config()
+    container_config = get_base_config()
     # Tamper with the signature payload
-    attestation = oci_config["custom"]["sealpod"]["attestations"][0]
+    attestation = container_config["custom"]["sealpod"]["attestations"][0]
     attestation["signature"] = "SGVsbG8gV29ybGQ=" # Invalid signature bytes
     
-    resp = requests.post(API_URL, json={"oci_config": oci_config})
+    resp = requests.post(API_URL, json={"container_config": container_config})
     assert resp.status_code == 400
     assert resp.json()["verified"] is False
     assert "failed" in resp.json().get("error", "").lower() or "verification" in resp.json().get("error", "").lower()
 
 def test_untrusted_ca_chain():
-    oci_config = get_base_config()
+    container_config = get_base_config()
     # Replace the certificate with a self-signed one (not signed by the intermediate CA)
-    from cryptography import x509
     from cryptography.x509.oid import NameOID
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
@@ -77,16 +76,16 @@ def test_untrusted_ca_chain():
         .sign(key, hashes.SHA256())
     )
     cert_pem = cert.public_bytes(serialization.Encoding.PEM).decode('utf-8')
-    oci_config["custom"]["sealpod"]["attestations"][0]["certificate"] = cert_pem
+    container_config["custom"]["sealpod"]["attestations"][0]["certificate"] = cert_pem
 
-    resp = requests.post(API_URL, json={"oci_config": oci_config})
+    resp = requests.post(API_URL, json={"container_config": container_config})
     assert resp.status_code == 400
     assert resp.json()["verified"] is False
     assert "chain" in resp.json().get("error", "").lower() or "untrusted" in resp.json().get("error", "").lower() or "certificate" in resp.json().get("error", "").lower()
 
 def test_mismatched_signer():
-    oci_config = get_base_config()
-    attestation = oci_config["custom"]["sealpod"]["attestations"][0]
+    container_config = get_base_config()
+    attestation = container_config["custom"]["sealpod"]["attestations"][0]
     
     # Payload claims signer is 'attacker@malicious.com'
     # But certificate SAN matches 'release-signer@sealpod.io'
@@ -97,9 +96,8 @@ def test_mismatched_signer():
     
     # We must re-encode and re-sign with our valid leaf key to make the signature match the malicious payload,
     # but the verification MUST fail because the signer email does not match the certificate email!
-    from cryptography.hazmat.primitives.serialization import load_pem_private_key
-    with open("/app/keys/leaf.crt", "r") as f:
-        leaf_cert = x509.load_pem_x509_certificate(f.read().encode('utf-8'))
+    # Just re-encode the altered payload and verify rejection
+    # (email mismatch or signature verification check)
     
     # Re-encode payload
     canonical_payload = json.dumps(payload_data, sort_keys=True, separators=(',', ':')).encode('utf-8')
@@ -109,7 +107,7 @@ def test_mismatched_signer():
     # the verify endpoint rejects it (either due to invalid signature or mismatched signer email).
     attestation["payload"] = encoded_payload
     
-    resp = requests.post(API_URL, json={"oci_config": oci_config})
+    resp = requests.post(API_URL, json={"container_config": container_config})
     assert resp.status_code == 400
     assert resp.json()["verified"] is False
 
@@ -119,7 +117,7 @@ def test_client_run_and_dot_graph():
     if os.path.exists(output_dot):
         os.remove(output_dot)
         
-    cmd = ["python", "/app/client.py", "--config", "/app/oci_config.json", "--output", output_dot]
+    cmd = ["python", "/app/client.py", "--config", "/app/container_config.json", "--output", output_dot]
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0, f"Client run failed: {res.stderr}"
     

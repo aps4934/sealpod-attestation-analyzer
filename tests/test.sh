@@ -1,30 +1,27 @@
 #!/bin/bash
 # Runs inside the container environment.
 
-# Ensure output directories exist
+# Ensure verifier log directory exists
 mkdir -p /logs/verifier
 
-# Start mock OSV service in background
+# Start local mock OSV service
 python /app/mock_osv.py > /logs/verifier/mock_osv.log 2>&1 &
 MOCK_OSV_PID=$!
 
-# Start Flask verification service in background
+# Start main verification API service
 python /app/app.py > /logs/verifier/app.log 2>&1 &
 APP_PID=$!
 
-# Run the pytest suite
-pytest --ctrf /logs/verifier/ctrf.json D:/Snorkel/S1D:/Snorkel/S1D:/Snorkel/S1D:/Snorkel/S1/tests/test_outputs.py -rA
-TEST_EXIT_CODE=$?
+# Register exit trap to clean up services on exit
+trap 'kill $MOCK_OSV_PID $APP_PID 2>/dev/null' EXIT
 
-# Clean up background services
-kill $MOCK_OSV_PID
-kill $APP_PID
+# Give services a moment to start
+sleep 2
 
-# Write final reward file
-if [ $TEST_EXIT_CODE -eq 0 ]; then
+# Run the test suite
+pytest --ctrf /logs/verifier/ctrf.json D:/Snorkel/S1D:/Snorkel/S1/tests/test_outputs.py -rA
+if [ $? -eq 0 ]; then
   echo 1 > /logs/verifier/reward.txt
 else
   echo 0 > /logs/verifier/reward.txt
 fi
-
-exit $TEST_EXIT_CODE

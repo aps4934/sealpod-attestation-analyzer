@@ -10,7 +10,7 @@ DATE: JULY 11, 2026 - JULY 12, 2026
 [2026-07-11T09:16:45] alice: I'm on call. Looking into it now. The admission controller calls our internal Flask service `/verify` endpoint, which reports the image signature is valid. Let me pull the OCI config.
 [2026-07-11T09:18:10] bob: Is the validation logic actually working? I remember Charlie changed the signature formatting last month to comply with the new SecOps guidelines.
 [2026-07-11T09:20:00] charlie: Yes, I updated it. We moved from the old raw PSS signature block to the custom SealPod attestation block embedded in the OCI config's custom attributes. It's supposed to verify the package payload, check the certificate chain, and validate the signature.
-[2026-07-11T09:22:30] alice: Wait, I see the custom attribute in `oci_config.json`. It's under `custom.sealpod.attestations`. It contains:
+[2026-07-11T09:22:30] alice: Wait, I see the custom attribute in `container_config.json`. It's under `custom.sealpod.attestations`. It contains:
 - `layers`: list of layer diff IDs.
 - `payload`: base64-encoded payload.
 - `signature`: base64-encoded signature.
@@ -103,7 +103,7 @@ If any of these checks fail, `/verify` must return a failure or raise an error.
 Let's check the client integration tests in `/tests/test_outputs.py`. The tests expect a POST request to `/verify` with a JSON body:
 ```json
 {
-  "oci_config": { ... }
+  "container_config": { ... }
 }
 ```
 And `/verify` must return:
@@ -143,7 +143,7 @@ Let's check `app.py`. It currently returns the raw `type` field instead of norma
 
 [2026-07-11T09:55:00] charlie: What about `/app/client.py`?
 The client script needs to:
-1. Parse `/app/oci_config.json`.
+1. Parse `/app/container_config.json`.
 2. Extract the attestation details and POST them to `http://localhost:8080/verify`.
 3. If `/verify` succeeds and reports `"verified": true`, extract the list of packages.
 4. For each package, query the local OSV.dev server at `http://localhost:8082/v1/query`.
@@ -196,7 +196,7 @@ The client script needs to:
    Perfect! This simplifies the mapping.
 
 [2026-07-12T10:15:30] dev-lead: Great, let's get this fixed and verified against the integration tests. Remember that the client script should be executable and run as a CLI tool:
-`python client.py --config /app/oci_config.json --output /app/graph.dot`
+`python client.py --config /app/container_config.json --output /app/graph.dot`
 It should verify and output the graph.
 
 ================================================================================

@@ -7,13 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     graphviz \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python requirements at build time
-RUN pip install --no-cache-dir \
-    flask==3.0.3 \
-    requests==2.32.3 \
-    cryptography==42.0.8 \
-    pytest==8.1.1 \
-    pytest-json-ctrf==0.3.5
+# Copy Python dependencies lockfile
+COPY requirements.lock /tmp/requirements.lock
+
+# Install Python requirements at build time using the lockfile
+RUN pip install --no-cache-dir --no-deps -r /tmp/requirements.lock
 
 # Setup app directory
 WORKDIR /app
