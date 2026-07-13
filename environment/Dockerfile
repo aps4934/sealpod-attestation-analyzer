@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.lock /tmp/requirements.lock
 
 # Install Python requirements at build time using the lockfile
-RUN pip install --no-cache-dir --no-deps -r /tmp/requirements.lock
+RUN pip install --no-cache-dir -r /tmp/requirements.lock
 
 # Setup app directory
 WORKDIR /app
