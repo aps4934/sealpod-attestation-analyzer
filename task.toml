@@ -1,10 +1,9 @@
+version = "2.0"
 artifacts = ["/app/app.py", "/app/client.py"]
 
-[task]
+[metadata]
 name = "security/sealpod-attestation-analyzer"
 description = "Reverse-engineer the undocumented SealPod container attestation format and repair the Flask analysis API and client Graphviz script."
-
-[metadata]
 author_name = "anonymous"
 author_email = "anonymous@example.com"
 difficulty = "hard"

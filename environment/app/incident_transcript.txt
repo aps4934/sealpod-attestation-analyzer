@@ -7,9 +7,9 @@ DATE: JULY 11, 2026 - JULY 12, 2026
 
 [2026-07-11T09:12:04] security-bot [INFO]: Alert - Policy bypass detected. Container image sha256:ef4c2b9a... deployed in namespace 'production' has packages: numpy 1.26.4 (pip), lodash 4.17.20 (npm), openssl 3.0.2-0ubuntu1 (deb). Image reports valid SealPod attestation, but OSV.dev queries reveal high/critical CVEs. Signature validation service reports SUCCESS.
 [2026-07-11T09:15:20] dev-lead: @here Who is on-call? How did an image with vulnerable packages bypass the signature check? The policy strictly rejects any unverified signature, and if verified, it should check CVEs.
-[2026-07-11T09:16:45] alice: I'm on call. Looking into it now. The admission controller calls our internal Flask service `/verify` endpoint, which reports the image signature is valid. Let me pull the OCI config.
+[2026-07-11T09:16:45] alice: I'm on call. Looking into it now. The admission controller calls our internal Flask service `/verify` endpoint, which reports the image signature is valid. Let me pull the container configuration.
 [2026-07-11T09:18:10] bob: Is the validation logic actually working? I remember Charlie changed the signature formatting last month to comply with the new SecOps guidelines.
-[2026-07-11T09:20:00] charlie: Yes, I updated it. We moved from the old raw PSS signature block to the custom SealPod attestation block embedded in the OCI config's custom attributes. It's supposed to verify the package payload, check the certificate chain, and validate the signature.
+[2026-07-11T09:20:00] charlie: Yes, I updated it. We moved from the old raw PSS signature block to the custom SealPod attestation block embedded in the container config's custom attributes. It's supposed to verify the package payload, check the certificate chain, and validate the signature.
 [2026-07-11T09:22:30] alice: Wait, I see the custom attribute in `container_config.json`. It's under `custom.sealpod.attestations`. It contains:
 - `layers`: list of layer diff IDs.
 - `payload`: base64-encoded payload.
@@ -66,11 +66,10 @@ So the verification process is:
 - What about signature algorithm?
 [2026-07-11T09:37:45] charlie: We used ECDSA with SHA-256 over the SECP256R1 curve (nistp256).
 Wait, early drafts suggested RSASSA-PSS or RSA-PKCS1v1.5, but we rejected them for EC-based keys because of performance and key sizes. The leaf public key is an EC public key.
-Let's verify this. Yes, the key in `leaf.crt` is an EC key over the SECP256R1 curve.
 So signature verification must use:
 `public_key.verify(signature, base64url_payload.encode('utf-8'), ec.ECDSA(hashes.SHA256()))`
 
-[2026-07-11T09:40:10] alice: What about the certificate chain? Does the Flask API validate the certificate?
+[2026-07-11T09:38:10] alice: What about the certificate chain? Does the Flask API validate the certificate?
 In `/app/app.py`:
 ```python
 # Certificate validation block
@@ -79,7 +78,7 @@ cert = x509.load_pem_x509_certificate(leaf_cert_pem)
 public_key = cert.public_key()
 # BUG: It does not check if the leaf cert is trusted!
 ```
-Yes! The API just trusts whatever certificate is embedded in the OCI spec! That's a massive security vulnerability! Anyone can generate their own self-signed key/cert, embed it in the spec, sign the payload, and it will report valid!
+Yes! The API just trusts whatever certificate is embedded in the spec! That's a massive security vulnerability! Anyone can generate their own self-signed key/cert, embed it in the spec, sign the payload, and it will report valid!
 [2026-07-11T09:42:30] dev-lead: Absolutely. We must implement proper certificate chain validation in `/verify`.
 The verification service must:
 1. Load the trusted Root CA certificate from `/app/keys/root.crt`.
@@ -189,7 +188,7 @@ The client script needs to:
    The package nodes should be prefixed with `"Package: " <name> " (" <version> ")"` format, e.g. `"Package: numpy (1.26.4)"`.
    The CVE nodes should be labeled with the CVE ID directly, e.g. `"CVE-2024-37891"`.
    Let's check: does the client associate layers with packages?
-   Wait, the OCI config attestation block has `layers` array.
+   Wait, the attestation block has `layers` array.
    All packages in the payload packages list are associated with *all* layers in that attestation block!
    Wait, is that correct? Let's check reviewer comment #9:
    "Reviewer comment: Since an attestation block contains multiple layers and a list of packages, every package in the attestation is considered to reside on all layers defined in the same attestation block. Therefore, draw an edge from each layer in the attestation to every package in the attestation. Draw an edge from each package to all of its verified CVEs."

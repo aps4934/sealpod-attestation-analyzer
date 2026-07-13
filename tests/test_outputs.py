@@ -9,7 +9,7 @@ API_URL = "http://localhost:8080/verify"
 
 @pytest.fixture(scope="session", autouse=True)
 def wait_for_services():
-    # Wait for the verify API to be healthy
+    """Wait for the verify API to be healthy before running tests."""
     for _ in range(30):
         try:
             requests.post(API_URL, json={}, timeout=1)
@@ -22,11 +22,12 @@ def wait_for_services():
         pytest.fail("Verification service did not start in time.")
 
 def get_base_config():
+    """Load the default container configuration spec."""
     with open("/app/container_config.json", "r", encoding="utf-8") as f:
         return json.load(f)
 
 def test_endpoint_contract():
-    # Verify valid OCI config verification returns expected contract
+    """Verify that a valid attestation block returns HTTP 200 with the correct contract layout and normalized package ecosystems."""
     container_config = get_base_config()
     resp = requests.post(API_URL, json={"container_config": container_config})
     assert resp.status_code == 200
@@ -45,6 +46,7 @@ def test_endpoint_contract():
     assert pkg_map["openssl"]["ecosystem"] == "Debian"
 
 def test_invalid_signature():
+    """Verify that an attestation block with a tampered/invalid signature is rejected with HTTP 400."""
     container_config = get_base_config()
     # Tamper with the signature payload
     attestation = container_config["custom"]["sealpod"]["attestations"][0]
@@ -56,6 +58,7 @@ def test_invalid_signature():
     assert "failed" in resp.json().get("error", "").lower() or "verification" in resp.json().get("error", "").lower()
 
 def test_untrusted_ca_chain():
+    """Verify that an attestation signed by a certificate outside the trusted root/intermediate CA chain is rejected with HTTP 400."""
     container_config = get_base_config()
     # Replace the certificate with a self-signed one (not signed by the intermediate CA)
     from cryptography.x509.oid import NameOID
@@ -84,6 +87,7 @@ def test_untrusted_ca_chain():
     assert "chain" in resp.json().get("error", "").lower() or "untrusted" in resp.json().get("error", "").lower() or "certificate" in resp.json().get("error", "").lower()
 
 def test_mismatched_signer():
+    """Verify that an attestation payload where the signer email does not match the certificate's Subject Alternative Name is rejected, even when the signature is cryptographically valid."""
     container_config = get_base_config()
     attestation = container_config["custom"]["sealpod"]["attestations"][0]
     
@@ -94,24 +98,40 @@ def test_mismatched_signer():
     payload_data = json.loads(payload_bytes)
     payload_data["signer"] = "attacker@malicious.com"
     
-    # We must re-encode and re-sign with our valid leaf key to make the signature match the malicious payload,
-    # but the verification MUST fail because the signer email does not match the certificate email!
-    # Just re-encode the altered payload and verify rejection
-    # (email mismatch or signature verification check)
+    # Load the actual leaf private key to sign the tampered payload
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import hashes
     
-    # Re-encode payload
+    key_path = "D:/Snorkel/S1D:/Snorkel/S1/tests/leaf.key"
+    if not os.path.exists(key_path):
+        key_path = "D:/Snorkel/S1D:/Snorkel/S1D:/Snorkel/S1/tests/leaf.key"
+        
+    with open(key_path, "rb") as f:
+        leaf_key = load_pem_private_key(f.read(), password=None)
+        
+    # Re-encode payload canonical JSON
     canonical_payload = json.dumps(payload_data, sort_keys=True, separators=(',', ':')).encode('utf-8')
     encoded_payload = base64.urlsafe_b64encode(canonical_payload).decode('utf-8').rstrip('=')
     
-    # We don't have the leaf private key inside the container at test runtime, but we can verify that
-    # the verify endpoint rejects it (either due to invalid signature or mismatched signer email).
-    attestation["payload"] = encoded_payload
+    # Create a valid signature over the new payload using the actual leaf private key
+    signature_bytes = leaf_key.sign(encoded_payload.encode('utf-8'), ec.ECDSA(hashes.SHA256()))
+    encoded_signature = base64.urlsafe_b64encode(signature_bytes).decode('utf-8').rstrip('=')
     
+    attestation["payload"] = encoded_payload
+    attestation["signature"] = encoded_signature
+    
+    # Endpoint should reject because the signer email in the payload does not match the certificate SAN email
     resp = requests.post(API_URL, json={"container_config": container_config})
     assert resp.status_code == 400
-    assert resp.json()["verified"] is False
+    res_json = resp.json()
+    assert res_json["verified"] is False
+    
+    err_msg = res_json.get("error", "").lower()
+    assert "signer" in err_msg or "mismatch" in err_msg or "email" in err_msg
 
 def test_client_run_and_dot_graph():
+    """Verify that client.py executes successfully, queries the OSV service, and produces a complete Graphviz DOT graph containing all required nodes and layer/package/CVE mapping relationships."""
     # Execute the client script to generate the DOT graph
     output_dot = "/app/graph.dot"
     if os.path.exists(output_dot):
@@ -132,8 +152,10 @@ def test_client_run_and_dot_graph():
     assert '"Signer: release-signer@sealpod.io"' in dot_content
     
     # Assert layer nodes exist
-    assert '"Layer: sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef"' in dot_content
-    assert '"Layer: sha256:d8c2bef31f4e14f286937ce665e8a1d3669bf06c5905b01387fb64db8c2d8296"' in dot_content
+    layer1 = "sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef"
+    layer2 = "sha256:d8c2bef31f4e14f286937ce665e8a1d3669bf06c5905b01387fb64db8c2d8296"
+    assert f'"Layer: {layer1}"' in dot_content
+    assert f'"Layer: {layer2}"' in dot_content
     
     # Assert package nodes exist
     assert '"Package: numpy (1.26.4)"' in dot_content
@@ -145,7 +167,21 @@ def test_client_run_and_dot_graph():
     assert '"CVE-2020-8203"' in dot_content
     assert '"CVE-2022-0778"' in dot_content
     
-    # Assert relationship links exist
-    assert '"Signer: release-signer@sealpod.io" -> "Layer: sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef"' in dot_content
-    assert '"Layer: sha256:452d3a39e80b2a37abf2ad303a7c64bb93740e57dfc665e8a1d3617f9d8a36ef" -> "Package: numpy (1.26.4)"' in dot_content
+    # Assert Signer -> Layer relationships
+    assert f'"Signer: release-signer@sealpod.io" -> "Layer: {layer1}"' in dot_content
+    assert f'"Signer: release-signer@sealpod.io" -> "Layer: {layer2}"' in dot_content
+    
+    # Assert Layer -> Package mapping (each package resides on ALL layers)
+    assert f'"Layer: {layer1}" -> "Package: numpy (1.26.4)"' in dot_content
+    assert f'"Layer: {layer2}" -> "Package: numpy (1.26.4)"' in dot_content
+    
+    assert f'"Layer: {layer1}" -> "Package: lodash (4.17.20)"' in dot_content
+    assert f'"Layer: {layer2}" -> "Package: lodash (4.17.20)"' in dot_content
+    
+    assert f'"Layer: {layer1}" -> "Package: openssl (3.0.2-0ubuntu1)"' in dot_content
+    assert f'"Layer: {layer2}" -> "Package: openssl (3.0.2-0ubuntu1)"' in dot_content
+    
+    # Assert Package -> CVE mappings
     assert '"Package: numpy (1.26.4)" -> "CVE-2024-37891"' in dot_content
+    assert '"Package: lodash (4.17.20)" -> "CVE-2020-8203"' in dot_content
+    assert '"Package: openssl (3.0.2-0ubuntu1)" -> "CVE-2022-0778"' in dot_content
